@@ -34,6 +34,36 @@ if (process.env.COOKIES_BASE64) {
 }
 
 // ============================================
+// DETERMINE YT-DLP PATH (Docker vs Local)
+// ============================================
+let ytDlpPath;
+if (process.platform === 'win32') {
+    // Windows local path
+    ytDlpPath = 'C:\\Users\\HP\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe';
+} else {
+    // Linux/Docker - check multiple possible locations
+    const possiblePaths = [
+        '/usr/local/bin/yt-dlp',      // Docker image path
+        path.join(__dirname, 'yt-dlp'), // Local download
+        '/usr/bin/yt-dlp',             // System install
+        '/opt/render/project/src/yt-dlp' // Render build path
+    ];
+    
+    for (const testPath of possiblePaths) {
+        if (fs.existsSync(testPath)) {
+            ytDlpPath = testPath;
+            break;
+        }
+    }
+    
+    // Fallback to 'yt-dlp' if not found (rely on PATH)
+    if (!ytDlpPath) {
+        ytDlpPath = 'yt-dlp';
+    }
+}
+console.log(`📌 Using yt-dlp at: ${ytDlpPath}`);
+
+// ============================================
 // RATE LIMITING (Prevents 429 errors)
 // ============================================
 const requestTimestamps = {};
@@ -59,7 +89,9 @@ app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         message: 'Easer Downloader API is running!',
-        version: '1.0.0'
+        version: '1.0.0',
+        yt_dlp_path: ytDlpPath,
+        platform: process.platform
     });
 });
 
@@ -76,32 +108,23 @@ app.post('/api/download', (req, res) => {
         });
     }
 
-    // Determine the correct yt-dlp path
-    const isWindows = process.platform === 'win32';
-    let ytDlpPath;
-    if (isWindows) {
-        ytDlpPath = 'C:\\Users\\HP\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe';
-    } else {
-        ytDlpPath = path.join(__dirname, 'yt-dlp');
-    }
-
     // ============================================
-    // METHOD 1: Try Android Client (Best for YouTube)
+    // METHOD 1: Android Client (Best for YouTube)
     // ============================================
     const command1 = `${ytDlpPath} --print url --format "best[ext=mp4]/best" --cookies ./cookies.txt --extractor-args "youtube:player_client=android" ${url}`;
 
     // ============================================
-    // METHOD 2: Try Web Client (Fallback)
+    // METHOD 2: Web Client (Fallback)
     // ============================================
     const command2 = `${ytDlpPath} --print url --format "best[ext=mp4]/best" --cookies ./cookies.txt --extractor-args "youtube:player_client=web" ${url}`;
 
     // ============================================
-    // METHOD 3: Try TV Player Variant
+    // METHOD 3: TV Player Variant
     // ============================================
     const command3 = `${ytDlpPath} --print url --format "best[ext=mp4]/best" --cookies ./cookies.txt --extractor-args "youtube:player_js_variant=tv" ${url}`;
 
     // ============================================
-    // METHOD 4: Try iOS Client
+    // METHOD 4: iOS Client
     // ============================================
     const command4 = `${ytDlpPath} --print url --format "best[ext=mp4]/best" --cookies ./cookies.txt --extractor-args "youtube:player_client=ios" ${url}`;
 
@@ -111,11 +134,16 @@ app.post('/api/download', (req, res) => {
     const command5 = `${ytDlpPath} --print url --format "best[ext=mp4]/best" --cookies ./cookies.txt ${url}`;
 
     // ============================================
-    // METHOD 6: Facebook/Other Platforms (No YouTube args)
+    // METHOD 6: Best format with Android client
     // ============================================
-    const command6 = `${ytDlpPath} --print url --format "best[ext=mp4]/best" --cookies ./cookies.txt ${url}`;
+    const command6 = `${ytDlpPath} --print url --format "bestvideo+bestaudio/best" --cookies ./cookies.txt --extractor-args "youtube:player_client=android" ${url}`;
 
-    const methods = [command1, command2, command3, command4, command5, command6];
+    // ============================================
+    // METHOD 7: Try without cookies (for some platforms)
+    // ============================================
+    const command7 = `${ytDlpPath} --print url --format "best[ext=mp4]/best" ${url}`;
+
+    const methods = [command1, command2, command3, command4, command5, command6, command7];
     let currentMethod = 0;
 
     console.log(`📥 Processing URL: ${url}`);
@@ -126,16 +154,17 @@ app.post('/api/download', (req, res) => {
             return res.status(500).json({
                 error: 'Failed to extract media',
                 details: 'All extraction methods failed for this video. Please try a different URL or platform.',
-                url: url
+                url: url,
+                attempts: methods.length
             });
         }
 
         const command = methods[currentMethod];
-        console.log(`🔧 Method ${currentMethod + 1}: ${command}`);
+        console.log(`🔧 Method ${currentMethod + 1}/${methods.length}: ${command}`);
 
         exec(command, (error, stdout, stderr) => {
             // Log for debugging
-            console.log(`📤 Method ${currentMethod + 1} stdout:`, stdout);
+            console.log(`📤 Method ${currentMethod + 1} stdout:`, stdout || '(empty)');
             if (stderr) {
                 console.log(`⚠️ Method ${currentMethod + 1} stderr:`, stderr);
             }
@@ -158,6 +187,8 @@ app.post('/api/download', (req, res) => {
             }
 
             console.log(`✅ Success! URL found using method ${currentMethod + 1}`);
+            console.log(`🔗 URL: ${downloadUrl.substring(0, 100)}...`);
+            
             res.json({
                 success: true,
                 downloadUrl: downloadUrl,
@@ -182,14 +213,6 @@ app.post('/api/download-fallback', (req, res) => {
             error: 'URL is required',
             message: 'Please provide a valid video URL'
         });
-    }
-
-    const isWindows = process.platform === 'win32';
-    let ytDlpPath;
-    if (isWindows) {
-        ytDlpPath = 'C:\\Users\\HP\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe';
-    } else {
-        ytDlpPath = path.join(__dirname, 'yt-dlp');
     }
 
     // Try without cookies (for platforms that don't need them)
@@ -246,4 +269,6 @@ app.listen(PORT, () => {
     console.log(`🚀 Easer Downloader API running on port ${PORT}`);
     console.log(`🌐 Health check: https://easer-downloader-api.onrender.com/`);
     console.log(`📥 API endpoint: https://easer-downloader-api.onrender.com/api/download`);
+    console.log(`📌 yt-dlp path: ${ytDlpPath}`);
+    console.log(`🖥️ Platform: ${process.platform}`);
 });
