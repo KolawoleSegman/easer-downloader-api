@@ -1,17 +1,15 @@
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
-const path = require('path'); // <-- moved to top
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Health check endpoint
 app.get('/', (req, res) => {
     res.json({ 
         status: 'OK', 
@@ -20,7 +18,6 @@ app.get('/', (req, res) => {
     });
 });
 
-// Main download endpoint
 app.post('/api/download', (req, res) => {
     const { url } = req.body;
 
@@ -31,18 +28,16 @@ app.post('/api/download', (req, res) => {
         });
     }
 
-    // Determine the correct yt-dlp path
     const isWindows = process.platform === 'win32';
     let ytDlpPath;
     if (isWindows) {
-        // Windows local path (your machine)
         ytDlpPath = 'C:\\Users\\HP\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe';
     } else {
-        // Linux (Render) - use the local binary downloaded in postinstall
         ytDlpPath = path.join(__dirname, 'yt-dlp');
     }
 
-    const command = `${ytDlpPath} -g -f best ${url}`;
+    // 👇 ADDED: Use cookies to bypass YouTube bot detection
+    const command = `${ytDlpPath} -g -f best --cookies ./cookies.txt ${url}`;
 
     console.log(`📥 Processing URL: ${url}`);
     console.log(`🔧 Command: ${command}`);
@@ -73,8 +68,6 @@ app.post('/api/download', (req, res) => {
         }
 
         console.log(`✅ Success! Download URL found`);
-        console.log(`🔗 URL: ${downloadUrl.substring(0, 100)}...`);
-
         res.json({ 
             success: true,
             downloadUrl: downloadUrl,
@@ -83,7 +76,6 @@ app.post('/api/download', (req, res) => {
     });
 });
 
-// Error handling middleware
 app.use((err, req, res, next) => {
     console.error('💥 Server error:', err);
     res.status(500).json({ 
@@ -92,9 +84,6 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Start the server
 app.listen(PORT, () => {
     console.log(`🚀 Easer Downloader API running on port ${PORT}`);
-    console.log(`🌐 Health check: http://localhost:${PORT}/`);
-    console.log(`📥 API endpoint: http://localhost:${PORT}/api/download`);
 });
