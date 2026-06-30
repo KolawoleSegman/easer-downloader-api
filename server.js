@@ -6,12 +6,25 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// 👇 EXPLICIT CORS CONFIGURATION
+app.use(cors({
+    origin: '*', // Allow all origins (for testing)
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Handle preflight requests explicitly
+app.options('*', cors());
+
+app.use(express.json());
+app.use(express.static('public'));
+
 // Rate limiting
 const requestTimestamps = {};
 app.use((req, res, next) => {
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
-    const cooldown = 30000; // 30 seconds
+    const cooldown = 30000;
     
     if (requestTimestamps[ip] && (now - requestTimestamps[ip] < cooldown)) {
         return res.status(429).json({
@@ -22,10 +35,6 @@ app.use((req, res, next) => {
     requestTimestamps[ip] = now;
     next();
 });
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
 
 app.get('/', (req, res) => {
     res.json({
@@ -53,7 +62,6 @@ app.post('/api/download', (req, res) => {
         ytDlpPath = path.join(__dirname, 'yt-dlp');
     }
 
-    // Use --print instead of -g to avoid bot detection
     const command = `${ytDlpPath} --print url --format best --cookies ./cookies.txt ${url}`;
 
     console.log(`📥 Processing URL: ${url}`);
