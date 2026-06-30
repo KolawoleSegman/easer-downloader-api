@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
+const path = require('path'); // <-- moved to top
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -10,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Health check endpoint (useful for Render)
+// Health check endpoint
 app.get('/', (req, res) => {
     res.json({ 
         status: 'OK', 
@@ -23,7 +24,6 @@ app.get('/', (req, res) => {
 app.post('/api/download', (req, res) => {
     const { url } = req.body;
 
-    // Validate URL
     if (!url) {
         return res.status(400).json({ 
             error: 'URL is required',
@@ -31,22 +31,23 @@ app.post('/api/download', (req, res) => {
         });
     }
 
-    // For Render deployment, we just use 'yt-dlp' (it will be in PATH)
-    // For local Windows, you can use the full path
+    // Determine the correct yt-dlp path
     const isWindows = process.platform === 'win32';
-    const ytDlpCmd = isWindows 
-        ? 'C:\\Users\\HP\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe'
-        : 'yt-dlp';
-    
-    // Build the command
-    const command = `${ytDlpCmd} -g -f best ${url}`;
+    let ytDlpPath;
+    if (isWindows) {
+        // Windows local path (your machine)
+        ytDlpPath = 'C:\\Users\\HP\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe';
+    } else {
+        // Linux (Render) - use the local binary downloaded in postinstall
+        ytDlpPath = path.join(__dirname, 'yt-dlp');
+    }
+
+    const command = `${ytDlpPath} -g -f best ${url}`;
 
     console.log(`📥 Processing URL: ${url}`);
     console.log(`🔧 Command: ${command}`);
 
-    // Execute yt-dlp
     exec(command, (error, stdout, stderr) => {
-        // Log everything for debugging
         console.log('📤 stdout:', stdout);
         console.log('⚠️ stderr:', stderr);
 
@@ -59,7 +60,6 @@ app.post('/api/download', (req, res) => {
             });
         }
 
-        // Extract the first URL from output
         const lines = stdout.trim().split('\n');
         const downloadUrl = lines[0] || '';
 
@@ -75,7 +75,6 @@ app.post('/api/download', (req, res) => {
         console.log(`✅ Success! Download URL found`);
         console.log(`🔗 URL: ${downloadUrl.substring(0, 100)}...`);
 
-        // Return the download URL
         res.json({ 
             success: true,
             downloadUrl: downloadUrl,
