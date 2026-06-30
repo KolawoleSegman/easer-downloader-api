@@ -1,3 +1,0 @@
-git add cookies.txt
-git commit -m "Add cookies for YouTube authentication"
-git push
