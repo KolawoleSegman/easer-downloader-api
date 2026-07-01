@@ -34,31 +34,40 @@ if (process.env.COOKIES_BASE64) {
 }
 
 // ============================================
-// DETERMINE YT-DLP PATH
+// DETERMINE YT-DLP PATH - FIXED
 // ============================================
 let ytDlpPath;
-if (process.platform === 'win32') {
-    ytDlpPath = 'C:\\Users\\HP\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe';
-} else {
-    const possiblePaths = [
-        path.join(__dirname, 'yt-dlp'),
+
+// 1. First try the local binary (downloaded by postinstall)
+const localPath = path.join(__dirname, 'yt-dlp');
+if (fs.existsSync(localPath)) {
+    ytDlpPath = localPath;
+    console.log(`📌 Using local yt-dlp: ${ytDlpPath}`);
+} 
+// 2. Try common system paths (for Docker or Linux)
+else {
+    const systemPaths = [
         '/usr/local/bin/yt-dlp',
         '/usr/bin/yt-dlp',
         '/opt/render/project/src/yt-dlp'
     ];
-    
-    for (const testPath of possiblePaths) {
-        if (fs.existsSync(testPath)) {
-            ytDlpPath = testPath;
+    for (const p of systemPaths) {
+        if (fs.existsSync(p)) {
+            ytDlpPath = p;
+            console.log(`📌 Using system yt-dlp: ${ytDlpPath}`);
             break;
         }
     }
-    
-    if (!ytDlpPath) {
-        ytDlpPath = 'yt-dlp';
-    }
 }
-console.log(`📌 Using yt-dlp at: ${ytDlpPath}`);
+
+// 3. Fallback to 'yt-dlp' (rely on PATH)
+if (!ytDlpPath) {
+    ytDlpPath = 'yt-dlp';
+    console.log(`📌 Using yt-dlp from PATH (fallback)`);
+}
+
+console.log(`📌 Final yt-dlp path: ${ytDlpPath}`);
+console.log(`📌 File exists: ${fs.existsSync(ytDlpPath)}`);
 
 // ============================================
 // RATE LIMITING (Excludes /debug)
@@ -93,6 +102,7 @@ app.get('/', (req, res) => {
         message: 'Easer Downloader API is running!',
         version: '1.0.0',
         yt_dlp_path: ytDlpPath,
+        yt_dlp_exists: fs.existsSync(ytDlpPath),
         platform: process.platform,
         cookies_exist: fs.existsSync('cookies.txt')
     });
@@ -197,6 +207,7 @@ app.get('/debug', (req, res) => {
                     debug: {
                         url: url,
                         yt_dlp_path: ytDlpPath,
+                        yt_dlp_exists: fs.existsSync(ytDlpPath),
                         cookies_exist: cookiesExist,
                         cookie_preview: cookiePreview,
                         timestamp: new Date().toISOString()
