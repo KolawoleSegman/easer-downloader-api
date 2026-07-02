@@ -132,27 +132,27 @@ app.get('/debug', (req, res) => {
         }
     }
     
-    // Build multiple test commands
+    // Build multiple test commands with impersonation for YouTube
     const commands = [
         {
-            name: 'Android Client + MP4',
+            name: 'Android + Impersonate Chrome',
+            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=android" ${url}`
+        },
+        {
+            name: 'Web + Impersonate Chrome',
+            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=web" ${url}`
+        },
+        {
+            name: 'Android + Impersonate + TV Variant',
+            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=android" --extractor-args "youtube:player_js_variant=tv" ${url}`
+        },
+        {
+            name: 'No Impersonate (Android)',
             cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --extractor-args "youtube:player_client=android" ${url}`
-        },
-        {
-            name: 'Web Client + MP4',
-            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --extractor-args "youtube:player_client=web" ${url}`
-        },
-        {
-            name: 'Android + Best Format',
-            cmd: `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt --extractor-args "youtube:player_client=android" ${url}`
         },
         {
             name: 'No Cookies (Fallback)',
             cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" ${url}`
-        },
-        {
-            name: 'With User-Agent',
-            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36" ${url}`
         }
     ];
     
@@ -247,14 +247,17 @@ app.post('/api/download', (req, res) => {
     let commands = [];
     
     if (isYoutube) {
+        // YouTube-specific commands with impersonation and multiple extractor args
         commands = [
+            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=android" ${url}`,
+            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=web" ${url}`,
+            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=android,web" ${url}`,
+            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_js_variant=tv" ${url}`,
             `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --extractor-args "youtube:player_client=android" ${url}`,
-            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --extractor-args "youtube:player_client=web" ${url}`,
-            `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt --extractor-args "youtube:player_client=android" ${url}`,
-            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt ${url}`,
             `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt ${url}`
         ];
     } else {
+        // For Facebook, Instagram, etc. (no impersonation)
         commands = [
             `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt ${url}`,
             `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt ${url}`,
