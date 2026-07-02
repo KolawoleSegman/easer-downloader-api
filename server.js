@@ -34,18 +34,14 @@ if (process.env.COOKIES_BASE64) {
 }
 
 // ============================================
-// DETERMINE YT-DLP PATH - FIXED
+// DETERMINE YT-DLP PATH
 // ============================================
 let ytDlpPath;
 
-// 1. First try the local binary (downloaded by postinstall)
 const localPath = path.join(__dirname, 'yt-dlp');
 if (fs.existsSync(localPath)) {
     ytDlpPath = localPath;
-    console.log(`📌 Using local yt-dlp: ${ytDlpPath}`);
-} 
-// 2. Try common system paths (for Docker or Linux)
-else {
+} else {
     const systemPaths = [
         '/usr/local/bin/yt-dlp',
         '/usr/bin/yt-dlp',
@@ -54,34 +50,29 @@ else {
     for (const p of systemPaths) {
         if (fs.existsSync(p)) {
             ytDlpPath = p;
-            console.log(`📌 Using system yt-dlp: ${ytDlpPath}`);
             break;
         }
     }
 }
 
-// 3. Fallback to 'yt-dlp' (rely on PATH)
 if (!ytDlpPath) {
     ytDlpPath = 'yt-dlp';
-    console.log(`📌 Using yt-dlp from PATH (fallback)`);
 }
 
-console.log(`📌 Final yt-dlp path: ${ytDlpPath}`);
-console.log(`📌 File exists: ${fs.existsSync(ytDlpPath)}`);
+console.log(`📌 Using yt-dlp: ${ytDlpPath}`);
 
 // ============================================
-// RATE LIMITING (Excludes /debug)
+// RATE LIMITING
 // ============================================
 const requestTimestamps = {};
 app.use((req, res, next) => {
-    // Skip rate limiting for debug endpoint
     if (req.path === '/debug') {
         return next();
     }
     
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
-    const cooldown = 30000; // 30 seconds
+    const cooldown = 30000;
     
     if (requestTimestamps[ip] && (now - requestTimestamps[ip] < cooldown)) {
         return res.status(429).json({
@@ -94,82 +85,55 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// HEALTH CHECK ENDPOINT
+// HEALTH CHECK
 // ============================================
 app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         message: 'Easer Downloader API is running!',
         version: '1.0.0',
-        yt_dlp_path: ytDlpPath,
-        yt_dlp_exists: fs.existsSync(ytDlpPath),
         platform: process.platform,
         cookies_exist: fs.existsSync('cookies.txt')
     });
 });
 
 // ============================================
-// 🐞 DEBUG ENDPOINT (No rate limiting)
+// DEBUG ENDPOINT (For testing Facebook)
 // ============================================
 app.get('/debug', (req, res) => {
-    const url = req.query.url || 'https://youtu.be/Mp6gFhPFUdA';
+    const url = req.query.url || 'https://www.facebook.com/share/v/17tCnPyEYG/';
     
     console.log(`🐞 Debug request for: ${url}`);
     
-    // Check if cookies exist
     const cookiesExist = fs.existsSync('cookies.txt');
-    console.log(`📁 Cookies exist: ${cookiesExist}`);
     
-    // Read first few lines of cookies if they exist
-    let cookiePreview = null;
-    if (cookiesExist) {
-        try {
-            const cookieContent = fs.readFileSync('cookies.txt', 'utf-8');
-            const lines = cookieContent.split('\n').filter(line => line.trim() && !line.startsWith('#'));
-            cookiePreview = lines.slice(0, 3).map(line => line.substring(0, 50) + '...');
-        } catch (err) {
-            cookiePreview = ['Error reading cookies'];
-        }
-    }
-    
-    // Build multiple test commands with impersonation for YouTube
+    // Test commands for Facebook
     const commands = [
         {
-            name: 'Android + Impersonate Chrome',
-            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=android" ${url}`
+            name: 'Facebook with Cookies (MP4)',
+            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt ${url}`
         },
         {
-            name: 'Web + Impersonate Chrome',
-            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=web" ${url}`
+            name: 'Facebook with Cookies (Best)',
+            cmd: `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt ${url}`
         },
         {
-            name: 'Android + Impersonate + TV Variant',
-            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=android" --extractor-args "youtube:player_js_variant=tv" ${url}`
-        },
-        {
-            name: 'No Impersonate (Android)',
-            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --extractor-args "youtube:player_client=android" ${url}`
-        },
-        {
-            name: 'No Cookies (Fallback)',
+            name: 'Facebook without Cookies',
             cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" ${url}`
         }
     ];
     
     let results = [];
     let completed = 0;
-    let hasSuccess = false;
     let successUrl = null;
     
-    // Run each command
     commands.forEach((cmdInfo, index) => {
-        console.log(`🔧 Testing command ${index + 1}: ${cmdInfo.name}`);
+        console.log(`🔧 Testing ${cmdInfo.name}`);
         console.log(`📝 Command: ${cmdInfo.cmd}`);
         
         exec(cmdInfo.cmd, (error, stdout, stderr) => {
             const result = {
                 name: cmdInfo.name,
-                command: cmdInfo.cmd,
                 success: false,
                 error: null,
                 output: null,
@@ -179,59 +143,46 @@ app.get('/debug', (req, res) => {
             if (error) {
                 result.error = error.message;
                 result.stderr = stderr;
-                console.log(`❌ Command ${index + 1} failed: ${error.message}`);
+                console.log(`❌ ${cmdInfo.name} failed`);
             } else {
                 const lines = stdout.trim().split('\n');
                 const downloadUrl = lines[0] || '';
                 if (downloadUrl) {
                     result.success = true;
                     result.output = downloadUrl;
-                    if (!hasSuccess) {
-                        hasSuccess = true;
-                        successUrl = downloadUrl;
-                    }
-                    console.log(`✅ Command ${index + 1} succeeded!`);
+                    if (!successUrl) successUrl = downloadUrl;
+                    console.log(`✅ ${cmdInfo.name} succeeded!`);
                 } else {
-                    result.error = 'No URL found in output';
-                    result.output = stdout;
-                    console.log(`⚠️ Command ${index + 1} returned no URL`);
+                    result.error = 'No URL found';
                 }
             }
             
             results.push(result);
             completed++;
             
-            // When all commands are done, send the response
             if (completed === commands.length) {
-                const response = {
+                res.json({
                     debug: {
                         url: url,
                         yt_dlp_path: ytDlpPath,
-                        yt_dlp_exists: fs.existsSync(ytDlpPath),
                         cookies_exist: cookiesExist,
-                        cookie_preview: cookiePreview,
                         timestamp: new Date().toISOString()
                     },
                     results: results,
                     summary: {
-                        total_commands: commands.length,
+                        total: commands.length,
                         successful: results.filter(r => r.success).length,
                         failed: results.filter(r => !r.success).length
-                    }
-                };
-                
-                if (successUrl) {
-                    response.download_url = successUrl;
-                }
-                
-                res.json(response);
+                    },
+                    download_url: successUrl || null
+                });
             }
         });
     });
 });
 
 // ============================================
-// MAIN DOWNLOAD ENDPOINT (Rate limited)
+// MAIN DOWNLOAD ENDPOINT - FACEBOOK ONLY
 // ============================================
 app.post('/api/download', (req, res) => {
     const { url } = req.body;
@@ -243,32 +194,17 @@ app.post('/api/download', (req, res) => {
         });
     }
 
-    const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
-    let commands = [];
-    
-    if (isYoutube) {
-        // YouTube-specific commands with impersonation and multiple extractor args
-        commands = [
-            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=android" ${url}`,
-            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=web" ${url}`,
-            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_client=android,web" ${url}`,
-            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --impersonate chrome-131 --extractor-args "youtube:player_js_variant=tv" ${url}`,
-            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt --extractor-args "youtube:player_client=android" ${url}`,
-            `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt ${url}`
-        ];
-    } else {
-        // For Facebook, Instagram, etc. (no impersonation)
-        commands = [
-            `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt ${url}`,
-            `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt ${url}`,
-            `${ytDlpPath} --print url --format "best[ext=mp4]" ${url}`
-        ];
-    }
+    console.log(`📥 Processing URL: ${url}`);
+
+    // Try multiple methods for Facebook
+    const commands = [
+        `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt ${url}`,
+        `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt ${url}`,
+        `${ytDlpPath} --print url --format "best[ext=mp4]" ${url}`,
+        `${ytDlpPath} --print url --format "best" ${url}`
+    ];
 
     let currentMethod = 0;
-
-    console.log(`📥 Processing URL: ${url}`);
-    console.log(`📌 Platform: ${isYoutube ? 'YouTube' : 'Other'}`);
 
     function tryMethod() {
         if (currentMethod >= commands.length) {
@@ -276,8 +212,7 @@ app.post('/api/download', (req, res) => {
             return res.status(500).json({
                 error: 'Failed to extract media',
                 details: 'All extraction methods failed for this video.',
-                url: url,
-                attempts: commands.length
+                url: url
             });
         }
 
@@ -286,7 +221,7 @@ app.post('/api/download', (req, res) => {
 
         exec(command, (error, stdout, stderr) => {
             if (error) {
-                console.log(`⚠️ Method ${currentMethod + 1} failed: ${error.message}`);
+                console.log(`⚠️ Method ${currentMethod + 1} failed`);
                 currentMethod++;
                 tryMethod();
                 return;
@@ -316,46 +251,6 @@ app.post('/api/download', (req, res) => {
 });
 
 // ============================================
-// FALLBACK ENDPOINT (No rate limiting)
-// ============================================
-app.post('/api/download-fallback', (req, res) => {
-    const { url } = req.body;
-
-    if (!url) {
-        return res.status(400).json({
-            error: 'URL is required'
-        });
-    }
-
-    const command = `${ytDlpPath} --print url --format "best[ext=mp4]" ${url}`;
-    console.log(`📥 Processing URL (no cookies): ${url}`);
-    console.log(`🔧 Command: ${command}`);
-
-    exec(command, (error, stdout, stderr) => {
-        if (error) {
-            return res.status(500).json({
-                error: 'Failed to extract media',
-                details: stderr || error.message
-            });
-        }
-
-        const lines = stdout.trim().split('\n');
-        const downloadUrl = lines[0] || '';
-
-        if (!downloadUrl) {
-            return res.status(404).json({
-                error: 'No media found'
-            });
-        }
-
-        res.json({
-            success: true,
-            downloadUrl: downloadUrl
-        });
-    });
-});
-
-// ============================================
 // ERROR HANDLING
 // ============================================
 app.use((err, req, res, next) => {
@@ -373,7 +268,6 @@ app.listen(PORT, () => {
     console.log(`🚀 Easer Downloader API running on port ${PORT}`);
     console.log(`🌐 Health check: https://easer-downloader-api.onrender.com/`);
     console.log(`📥 API endpoint: https://easer-downloader-api.onrender.com/api/download`);
-    console.log(`🐞 Debug endpoint: https://easer-downloader-api.onrender.com/debug?url=YOUR_VIDEO_URL`);
+    console.log(`🐞 Debug endpoint: https://easer-downloader-api.onrender.com/debug?url=YOUR_URL`);
     console.log(`📌 yt-dlp path: ${ytDlpPath}`);
-    console.log(`🖥️ Platform: ${process.platform}`);
 });
