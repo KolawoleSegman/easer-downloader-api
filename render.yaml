@@ -4,6 +4,3 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    envVars:
-      - key: NODE_VERSION
-        value: 18.17.0
