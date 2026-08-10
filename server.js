@@ -115,7 +115,7 @@ app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         message: 'Easer Downloader API is running!',
-        version: '2.3.0',
+        version: '2.4.0',
         platform: process.platform,
         cookies_exist: fs.existsSync(cookiesPath),
         yt_dlp: ytDlpPath
@@ -131,7 +131,7 @@ app.get('/debug', async (req, res) => {
 
     const args = [
         '--print', 'url',
-        '--format', 'best',
+        '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         '--no-playlist',
         '--extractor-args', 'youtube:player_client=ios,android,web',
         url
@@ -187,8 +187,7 @@ app.post('/api/download', async (req, res) => {
     const args = [
         url,
         '-o', outputTemplate,
-        '--format', 'best',
-        '--merge-output-format', 'mp4',
+        '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         '--concurrent-fragments', '4',
         '--retries', '10',
         '--fragment-retries', '10',
