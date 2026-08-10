@@ -1,8 +1,8 @@
 # Use the yt-dlp image with PO token support
 FROM ghcr.io/jim60105/yt-dlp:pot
 
-# Install Node.js 18.x
-RUN apt-get update && apt-get install -y curl && \
+# Install Node.js 18.x and ffmpeg
+RUN apt-get update && apt-get install -y curl ffmpeg && \
     curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -24,6 +24,7 @@ RUN mkdir -p /app/.cache/yt-dlp
 
 # Set environment variables
 ENV YTDLP_CACHE_DIR=/app/.cache/yt-dlp
+ENV PORT=10000
 
 # Expose the port
 EXPOSE 10000
