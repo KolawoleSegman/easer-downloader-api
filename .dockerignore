@@ -1,7 +1,54 @@
-node_modules
-npm-debug.log
-.git
-.gitignore
+# Dependencies – will be installed inside the container
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Environment & secrets
 .env
-*.md
+.env.*
+cookies.txt
+*.pem
+*.key
+
+# Temporary download files
+tmp/
+temp/
+easer-downloads/
+
+# yt-dlp binary (should be installed during build or via package manager)
+yt-dlp
+yt-dlp.exe
+
+# Git & version control
+.git/
+.gitignore
+.gitattributes
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
 .DS_Store
+Thumbs.db
+
+# Build / cache
+.cache/
+dist/
+build/
+
+# Documentation (optional)
+*.md
+!README.md
+
+# Misc
+*.orig
+*.rej
+.dockerignore
