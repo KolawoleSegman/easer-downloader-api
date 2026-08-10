@@ -4,7 +4,7 @@ const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { v4: uuidv4 } = require('uuid'); // You need to install this: npm install uuid
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -22,7 +22,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // ============================================
-// CREATE COOKIES FROM ENV (Base64)
+// CREATE COOKIES FROM ENV
 // ============================================
 const cookiesPath = path.join(__dirname, 'cookies.txt');
 
@@ -37,7 +37,7 @@ if (process.env.COOKIES_BASE64) {
 }
 
 // ============================================
-// DETERMINE YT-DLP PATH
+// YT-DLP PATH
 // ============================================
 let ytDlpPath;
 const localPath = path.join(__dirname, 'yt-dlp');
@@ -62,14 +62,14 @@ if (fs.existsSync(localPath)) {
 console.log(`📌 Using yt-dlp: ${ytDlpPath}`);
 
 // ============================================
-// TEMP DIRECTORY FOR DOWNLOADS
+// TEMP DIRECTORY
 // ============================================
 const TEMP_DIR = path.join(os.tmpdir(), 'easer-downloads');
 if (!fs.existsSync(TEMP_DIR)) {
     fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-// Clean old files every hour (files older than 1 hour)
+// Clean old files every 30 minutes
 setInterval(() => {
     try {
         const files = fs.readdirSync(TEMP_DIR);
@@ -88,7 +88,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 // ============================================
-// RATE LIMITING
+// RATE LIMITING (12 seconds)
 // ============================================
 const requestTimestamps = {};
 app.use((req, res, next) => {
@@ -96,12 +96,12 @@ app.use((req, res, next) => {
 
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
-    const cooldown = 20000; // 20 seconds
+    const cooldown = 12000;
 
     if (requestTimestamps[ip] && (now - requestTimestamps[ip] < cooldown)) {
         return res.status(429).json({
             error: 'Too many requests',
-            message: 'Please wait 20 seconds before trying again.'
+            message: 'Please wait 12 seconds before trying again.'
         });
     }
     requestTimestamps[ip] = now;
@@ -115,7 +115,7 @@ app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         message: 'Easer Downloader API is running!',
-        version: '2.0.0',
+        version: '2.1.0',
         platform: process.platform,
         cookies_exist: fs.existsSync(cookiesPath),
         yt_dlp: ytDlpPath
@@ -126,14 +126,14 @@ app.get('/', (req, res) => {
 // DEBUG ENDPOINT
 // ============================================
 app.get('/debug', async (req, res) => {
-    const url = req.query.url || 'https://www.facebook.com/share/v/17tCnPyEYG/';
-
+    const url = req.query.url || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
     console.log(`🐞 Debug request for: ${url}`);
 
     const args = [
         '--print', 'url',
         '--format', 'best[ext=mp4]/best',
         '--no-playlist',
+        '--extractor-args', 'youtube:player_client=android,web',
         url
     ];
 
@@ -143,7 +143,7 @@ app.get('/debug', async (req, res) => {
 
     try {
         const result = await new Promise((resolve, reject) => {
-            execFile(ytDlpPath, args, { timeout: 30000 }, (error, stdout, stderr) => {
+            execFile(ytDlpPath, args, { timeout: 45000 }, (error, stdout, stderr) => {
                 if (error) return reject({ error: error.message, stderr });
                 resolve({ stdout: stdout.trim(), stderr });
             });
@@ -167,7 +167,7 @@ app.get('/debug', async (req, res) => {
 });
 
 // ============================================
-// MAIN DOWNLOAD ENDPOINT - DOWNLOADS TO SERVER
+// MAIN DOWNLOAD ENDPOINT
 // ============================================
 app.post('/api/download', async (req, res) => {
     const { url } = req.body;
@@ -179,126 +179,4 @@ app.post('/api/download', async (req, res) => {
         });
     }
 
-    console.log(`📥 Starting download for: ${url}`);
-
-    const id = uuidv4();
-    const outputTemplate = path.join(TEMP_DIR, `${id}.%(ext)s`);
-
-    // Strong flags for Facebook + general sites
-    const args = [
-        url,
-        '-o', outputTemplate,
-        '--format', 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
-        '--merge-output-format', 'mp4',
-        '--concurrent-fragments', '8',
-        '--retries', '8',
-        '--fragment-retries', '8',
-        '--no-playlist',
-        '--no-warnings',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9',
-        '--socket-timeout', '30'
-    ];
-
-    if (fs.existsSync(cookiesPath)) {
-        args.push('--cookies', cookiesPath);
-    }
-
-    try {
-        await new Promise((resolve, reject) => {
-            const process = execFile(ytDlpPath, args, {
-                maxBuffer: 50 * 1024 * 1024,
-                timeout: 5 * 60 * 1000 // 5 minutes max
-            }, (error, stdout, stderr) => {
-                if (error) {
-                    console.error('yt-dlp error:', error.message);
-                    console.error('stderr:', stderr);
-                    return reject({ message: error.message, stderr });
-                }
-                resolve({ stdout, stderr });
-            });
-
-            // Optional: log progress
-            process.stderr?.on('data', (data) => {
-                const line = data.toString();
-                if (line.includes('%') || line.includes('Downloading')) {
-                    process.stdout?.write(line); // or just console.log
-                }
-            });
-        });
-
-        // Find the downloaded file
-        const files = fs.readdirSync(TEMP_DIR).filter(f => f.startsWith(id));
-        if (files.length === 0) {
-            throw new Error('Download finished but no file was found');
-        }
-
-        const downloadedFile = path.join(TEMP_DIR, files[0]);
-        const stats = fs.statSync(downloadedFile);
-        const fileName = files[0].replace(id + '.', 'video.'); // nicer name
-
-        console.log(`✅ Download complete: ${downloadedFile} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
-
-        // Stream the file to the client
-        res.setHeader('Content-Type', 'video/mp4');
-        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-        res.setHeader('Content-Length', stats.size);
-
-        const stream = fs.createReadStream(downloadedFile);
-
-        stream.pipe(res);
-
-        // Clean up after the response finishes
-        stream.on('end', () => {
-            fs.unlink(downloadedFile, (err) => {
-                if (err) console.error('Failed to delete temp file:', err.message);
-                else console.log(`🧹 Deleted temp file: ${fileName}`);
-            });
-        });
-
-        stream.on('error', (err) => {
-            console.error('Stream error:', err);
-            fs.unlink(downloadedFile, () => {});
-            if (!res.headersSent) {
-                res.status(500).json({ error: 'Failed to stream file' });
-            }
-        });
-
-    } catch (err) {
-        console.error('❌ Download failed:', err.message || err);
-
-        // Try to clean any partial files
-        try {
-            const files = fs.readdirSync(TEMP_DIR).filter(f => f.startsWith(id));
-            files.forEach(f => fs.unlinkSync(path.join(TEMP_DIR, f)));
-        } catch (_) {}
-
-        return res.status(500).json({
-            error: 'Failed to download media',
-            details: err.message || 'Unknown error',
-            stderr: err.stderr || null,
-            suggestion: 'Try again later or check if the video is public / available'
-        });
-    }
-});
-
-// ============================================
-// ERROR HANDLING
-// ============================================
-app.use((err, req, res, next) => {
-    console.error('💥 Server error:', err);
-    res.status(500).json({
-        error: 'Internal server error',
-        message: err.message
-    });
-});
-
-// ============================================
-// START SERVER
-// ============================================
-app.listen(PORT, () => {
-    console.log(`🚀 Easer Downloader API running on port ${PORT}`);
-    console.log(`📌 yt-dlp: ${ytDlpPath}`);
-    console.log(`🍪 Cookies: ${fs.existsSync(cookiesPath) ? 'Yes' : 'No'}`);
-    console.log(`📂 Temp dir: ${TEMP_DIR}`);
-});
+    console.log(`📥 Starting download for
