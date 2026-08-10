@@ -1,14 +1,16 @@
 const express = require('express');
 const cors = require('cors');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const { v4: uuidv4 } = require('uuid'); // You need to install this: npm install uuid
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ============================================
-// CORS CONFIGURATION
+// CORS
 // ============================================
 app.use(cors({
     origin: '*',
@@ -16,17 +18,18 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.options('*', cors());
-
 app.use(express.json());
 app.use(express.static('public'));
 
 // ============================================
-// CREATE COOKIES FILE FROM ENVIRONMENT VARIABLE
+// CREATE COOKIES FROM ENV (Base64)
 // ============================================
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+
 if (process.env.COOKIES_BASE64) {
     try {
         const cookieContent = Buffer.from(process.env.COOKIES_BASE64, 'base64').toString('utf-8');
-        fs.writeFileSync('cookies.txt', cookieContent);
+        fs.writeFileSync(cookiesPath, cookieContent);
         console.log('✅ Cookies file created from environment variable');
     } catch (err) {
         console.error('❌ Failed to create cookies file:', err.message);
@@ -37,47 +40,68 @@ if (process.env.COOKIES_BASE64) {
 // DETERMINE YT-DLP PATH
 // ============================================
 let ytDlpPath;
-
 const localPath = path.join(__dirname, 'yt-dlp');
+
 if (fs.existsSync(localPath)) {
     ytDlpPath = localPath;
 } else {
     const systemPaths = [
         '/usr/local/bin/yt-dlp',
         '/usr/bin/yt-dlp',
-        '/opt/render/project/src/yt-dlp'
+        '/opt/render/project/src/yt-dlp',
+        'yt-dlp'
     ];
     for (const p of systemPaths) {
-        if (fs.existsSync(p)) {
+        if (p === 'yt-dlp' || fs.existsSync(p)) {
             ytDlpPath = p;
             break;
         }
     }
 }
 
-if (!ytDlpPath) {
-    ytDlpPath = 'yt-dlp';
+console.log(`📌 Using yt-dlp: ${ytDlpPath}`);
+
+// ============================================
+// TEMP DIRECTORY FOR DOWNLOADS
+// ============================================
+const TEMP_DIR = path.join(os.tmpdir(), 'easer-downloads');
+if (!fs.existsSync(TEMP_DIR)) {
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-console.log(`📌 Using yt-dlp: ${ytDlpPath}`);
+// Clean old files every hour (files older than 1 hour)
+setInterval(() => {
+    try {
+        const files = fs.readdirSync(TEMP_DIR);
+        const now = Date.now();
+        files.forEach(file => {
+            const filePath = path.join(TEMP_DIR, file);
+            const stats = fs.statSync(filePath);
+            if (now - stats.mtimeMs > 60 * 60 * 1000) {
+                fs.unlinkSync(filePath);
+                console.log(`🧹 Cleaned old file: ${file}`);
+            }
+        });
+    } catch (err) {
+        console.error('Cleanup error:', err.message);
+    }
+}, 30 * 60 * 1000);
 
 // ============================================
 // RATE LIMITING
 // ============================================
 const requestTimestamps = {};
 app.use((req, res, next) => {
-    if (req.path === '/debug') {
-        return next();
-    }
-    
+    if (req.path === '/debug' || req.path === '/') return next();
+
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
-    const cooldown = 30000;
-    
+    const cooldown = 20000; // 20 seconds
+
     if (requestTimestamps[ip] && (now - requestTimestamps[ip] < cooldown)) {
         return res.status(429).json({
             error: 'Too many requests',
-            message: 'Please wait 30 seconds before trying again.'
+            message: 'Please wait 20 seconds before trying again.'
         });
     }
     requestTimestamps[ip] = now;
@@ -91,163 +115,171 @@ app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         message: 'Easer Downloader API is running!',
-        version: '1.0.0',
+        version: '2.0.0',
         platform: process.platform,
-        cookies_exist: fs.existsSync('cookies.txt')
+        cookies_exist: fs.existsSync(cookiesPath),
+        yt_dlp: ytDlpPath
     });
 });
 
 // ============================================
-// DEBUG ENDPOINT (For testing Facebook)
+// DEBUG ENDPOINT
 // ============================================
-app.get('/debug', (req, res) => {
+app.get('/debug', async (req, res) => {
     const url = req.query.url || 'https://www.facebook.com/share/v/17tCnPyEYG/';
-    
+
     console.log(`🐞 Debug request for: ${url}`);
-    
-    const cookiesExist = fs.existsSync('cookies.txt');
-    
-    // Test commands for Facebook
-    const commands = [
-        {
-            name: 'Facebook with Cookies (MP4)',
-            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt ${url}`
-        },
-        {
-            name: 'Facebook with Cookies (Best)',
-            cmd: `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt ${url}`
-        },
-        {
-            name: 'Facebook without Cookies',
-            cmd: `${ytDlpPath} --print url --format "best[ext=mp4]" ${url}`
-        }
+
+    const args = [
+        '--print', 'url',
+        '--format', 'best[ext=mp4]/best',
+        '--no-playlist',
+        url
     ];
-    
-    let results = [];
-    let completed = 0;
-    let successUrl = null;
-    
-    commands.forEach((cmdInfo, index) => {
-        console.log(`🔧 Testing ${cmdInfo.name}`);
-        console.log(`📝 Command: ${cmdInfo.cmd}`);
-        
-        exec(cmdInfo.cmd, (error, stdout, stderr) => {
-            const result = {
-                name: cmdInfo.name,
-                success: false,
-                error: null,
-                output: null,
-                stderr: null
-            };
-            
-            if (error) {
-                result.error = error.message;
-                result.stderr = stderr;
-                console.log(`❌ ${cmdInfo.name} failed`);
-            } else {
-                const lines = stdout.trim().split('\n');
-                const downloadUrl = lines[0] || '';
-                if (downloadUrl) {
-                    result.success = true;
-                    result.output = downloadUrl;
-                    if (!successUrl) successUrl = downloadUrl;
-                    console.log(`✅ ${cmdInfo.name} succeeded!`);
-                } else {
-                    result.error = 'No URL found';
-                }
-            }
-            
-            results.push(result);
-            completed++;
-            
-            if (completed === commands.length) {
-                res.json({
-                    debug: {
-                        url: url,
-                        yt_dlp_path: ytDlpPath,
-                        cookies_exist: cookiesExist,
-                        timestamp: new Date().toISOString()
-                    },
-                    results: results,
-                    summary: {
-                        total: commands.length,
-                        successful: results.filter(r => r.success).length,
-                        failed: results.filter(r => !r.success).length
-                    },
-                    download_url: successUrl || null
-                });
-            }
+
+    if (fs.existsSync(cookiesPath)) {
+        args.push('--cookies', cookiesPath);
+    }
+
+    try {
+        const result = await new Promise((resolve, reject) => {
+            execFile(ytDlpPath, args, { timeout: 30000 }, (error, stdout, stderr) => {
+                if (error) return reject({ error: error.message, stderr });
+                resolve({ stdout: stdout.trim(), stderr });
+            });
         });
-    });
+
+        res.json({
+            success: true,
+            url,
+            downloadUrl: result.stdout.split('\n')[0] || null,
+            cookies_exist: fs.existsSync(cookiesPath),
+            yt_dlp: ytDlpPath
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.error || err.message,
+            stderr: err.stderr || null,
+            cookies_exist: fs.existsSync(cookiesPath)
+        });
+    }
 });
 
 // ============================================
-// MAIN DOWNLOAD ENDPOINT - FACEBOOK ONLY
+// MAIN DOWNLOAD ENDPOINT - DOWNLOADS TO SERVER
 // ============================================
-app.post('/api/download', (req, res) => {
+app.post('/api/download', async (req, res) => {
     const { url } = req.body;
 
-    if (!url) {
+    if (!url || typeof url !== 'string') {
         return res.status(400).json({
             error: 'URL is required',
             message: 'Please provide a valid video URL'
         });
     }
 
-    console.log(`📥 Processing URL: ${url}`);
+    console.log(`📥 Starting download for: ${url}`);
 
-    // Try multiple methods for Facebook
-    const commands = [
-        `${ytDlpPath} --print url --format "best[ext=mp4]" --cookies ./cookies.txt ${url}`,
-        `${ytDlpPath} --print url --format "best" --cookies ./cookies.txt ${url}`,
-        `${ytDlpPath} --print url --format "best[ext=mp4]" ${url}`,
-        `${ytDlpPath} --print url --format "best" ${url}`
+    const id = uuidv4();
+    const outputTemplate = path.join(TEMP_DIR, `${id}.%(ext)s`);
+
+    // Strong flags for Facebook + general sites
+    const args = [
+        url,
+        '-o', outputTemplate,
+        '--format', 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+        '--merge-output-format', 'mp4',
+        '--concurrent-fragments', '8',
+        '--retries', '8',
+        '--fragment-retries', '8',
+        '--no-playlist',
+        '--no-warnings',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--socket-timeout', '30'
     ];
 
-    let currentMethod = 0;
-
-    function tryMethod() {
-        if (currentMethod >= commands.length) {
-            console.error('❌ All methods failed');
-            return res.status(500).json({
-                error: 'Failed to extract media',
-                details: 'All extraction methods failed for this video.',
-                url: url
-            });
-        }
-
-        const command = commands[currentMethod];
-        console.log(`🔧 Method ${currentMethod + 1}/${commands.length}: ${command}`);
-
-        exec(command, (error, stdout, stderr) => {
-            if (error) {
-                console.log(`⚠️ Method ${currentMethod + 1} failed`);
-                currentMethod++;
-                tryMethod();
-                return;
-            }
-
-            const lines = stdout.trim().split('\n');
-            const downloadUrl = lines[0] || '';
-
-            if (!downloadUrl) {
-                console.log(`⚠️ Method ${currentMethod + 1} returned no URL`);
-                currentMethod++;
-                tryMethod();
-                return;
-            }
-
-            console.log(`✅ Success! URL found using method ${currentMethod + 1}`);
-            res.json({
-                success: true,
-                downloadUrl: downloadUrl,
-                message: 'Media ready for download',
-                method: currentMethod + 1
-            });
-        });
+    if (fs.existsSync(cookiesPath)) {
+        args.push('--cookies', cookiesPath);
     }
 
-    tryMethod();
+    try {
+        await new Promise((resolve, reject) => {
+            const process = execFile(ytDlpPath, args, {
+                maxBuffer: 50 * 1024 * 1024,
+                timeout: 5 * 60 * 1000 // 5 minutes max
+            }, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('yt-dlp error:', error.message);
+                    console.error('stderr:', stderr);
+                    return reject({ message: error.message, stderr });
+                }
+                resolve({ stdout, stderr });
+            });
+
+            // Optional: log progress
+            process.stderr?.on('data', (data) => {
+                const line = data.toString();
+                if (line.includes('%') || line.includes('Downloading')) {
+                    process.stdout?.write(line); // or just console.log
+                }
+            });
+        });
+
+        // Find the downloaded file
+        const files = fs.readdirSync(TEMP_DIR).filter(f => f.startsWith(id));
+        if (files.length === 0) {
+            throw new Error('Download finished but no file was found');
+        }
+
+        const downloadedFile = path.join(TEMP_DIR, files[0]);
+        const stats = fs.statSync(downloadedFile);
+        const fileName = files[0].replace(id + '.', 'video.'); // nicer name
+
+        console.log(`✅ Download complete: ${downloadedFile} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+
+        // Stream the file to the client
+        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', stats.size);
+
+        const stream = fs.createReadStream(downloadedFile);
+
+        stream.pipe(res);
+
+        // Clean up after the response finishes
+        stream.on('end', () => {
+            fs.unlink(downloadedFile, (err) => {
+                if (err) console.error('Failed to delete temp file:', err.message);
+                else console.log(`🧹 Deleted temp file: ${fileName}`);
+            });
+        });
+
+        stream.on('error', (err) => {
+            console.error('Stream error:', err);
+            fs.unlink(downloadedFile, () => {});
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Failed to stream file' });
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Download failed:', err.message || err);
+
+        // Try to clean any partial files
+        try {
+            const files = fs.readdirSync(TEMP_DIR).filter(f => f.startsWith(id));
+            files.forEach(f => fs.unlinkSync(path.join(TEMP_DIR, f)));
+        } catch (_) {}
+
+        return res.status(500).json({
+            error: 'Failed to download media',
+            details: err.message || 'Unknown error',
+            stderr: err.stderr || null,
+            suggestion: 'Try again later or check if the video is public / available'
+        });
+    }
 });
 
 // ============================================
@@ -262,12 +294,11 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================
-// START THE SERVER
+// START SERVER
 // ============================================
 app.listen(PORT, () => {
     console.log(`🚀 Easer Downloader API running on port ${PORT}`);
-    console.log(`🌐 Health check: https://easer-downloader-api.onrender.com/`);
-    console.log(`📥 API endpoint: https://easer-downloader-api.onrender.com/api/download`);
-    console.log(`🐞 Debug endpoint: https://easer-downloader-api.onrender.com/debug?url=YOUR_URL`);
-    console.log(`📌 yt-dlp path: ${ytDlpPath}`);
+    console.log(`📌 yt-dlp: ${ytDlpPath}`);
+    console.log(`🍪 Cookies: ${fs.existsSync(cookiesPath) ? 'Yes' : 'No'}`);
+    console.log(`📂 Temp dir: ${TEMP_DIR}`);
 });
