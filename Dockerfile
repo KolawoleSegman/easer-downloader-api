@@ -1,43 +1,41 @@
-# Use a Debian-based Node image (slim for smaller size)
+# Use a Debian-based Node image
 FROM node:18-slim
 
-# Install system dependencies: Python3, pip, ffmpeg, and curl
+# Install system dependencies: ffmpeg, curl, and python3 (for optional extras)
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
     ffmpeg \
     curl \
+    python3 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Deno (required by yt-dlp for JavaScript challenges)
 RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
 
-# Install yt-dlp with the default extras (includes challenge solver scripts)
-RUN pip3 install --break-system-packages yt-dlp[default]
+# Download yt-dlp binary and place it in /usr/local/bin
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp
 
-# Verify yt-dlp is installed and in PATH
-RUN which yt-dlp || (echo "yt-dlp not found in PATH" && exit 1)
+# Verify installation
+RUN yt-dlp --version
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files and install Node dependencies
 COPY package*.json ./
-
-# Install Node.js dependencies
 RUN npm install
 
-# Copy all project files
+# Copy the rest of the application
 COPY . .
 
-# Create a directory for yt-dlp to store cache
+# Create cache directory for yt-dlp
 RUN mkdir -p /app/.cache/yt-dlp
 
-# Set environment variables
+# Environment variables
 ENV YTDLP_CACHE_DIR=/app/.cache/yt-dlp
 ENV PORT=10000
 
-# Expose the port
+# Expose port
 EXPOSE 10000
 
 # Start the server
