@@ -115,7 +115,7 @@ app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         message: 'Easer Downloader API is running!',
-        version: '2.1.0',
+        version: '2.2.0',
         platform: process.platform,
         cookies_exist: fs.existsSync(cookiesPath),
         yt_dlp: ytDlpPath
@@ -131,7 +131,7 @@ app.get('/debug', async (req, res) => {
 
     const args = [
         '--print', 'url',
-        '--format', 'best[ext=mp4]/best',
+        '--format', 'bv*+ba/b',
         '--no-playlist',
         '--extractor-args', 'youtube:player_client=android,web',
         url
@@ -184,11 +184,11 @@ app.post('/api/download', async (req, res) => {
     const id = uuidv4();
     const outputTemplate = path.join(TEMP_DIR, `${id}.%(ext)s`);
 
-    // Improved arguments (better for YouTube + Facebook)
+    // More flexible format (fixes "Requested format is not available")
     const args = [
         url,
         '-o', outputTemplate,
-        '--format', 'best[ext=mp4]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best',
+        '--format', 'bv*+ba/b',
         '--merge-output-format', 'mp4',
         '--concurrent-fragments', '4',
         '--retries', '10',
@@ -275,7 +275,7 @@ app.post('/api/download', async (req, res) => {
             error: 'Failed to download media',
             details: err.message || 'Unknown error',
             stderr: err.stderr || null,
-            suggestion: 'YouTube may be blocking the server. Try again later or use a different video.'
+            suggestion: 'Try again later or use a different video.'
         });
     }
 });
