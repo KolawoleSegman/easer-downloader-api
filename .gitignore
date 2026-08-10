@@ -1,4 +1,63 @@
+# Dependencies
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json    # optional – many teams commit it, but if you prefer to ignore, uncomment
+
+# Environment & Secrets
 .env
+.env.local
+.env.*.local
+.env.example         # if you keep an example file, you usually commit it; don't ignore it
+cookies.txt
+*.pem
+*.key
+*.crt
+
+# OS files
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs
+logs/
 *.log
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary download files
+tmp/
+temp/
+easer-downloads/
+
+# yt-dlp binary (if downloaded locally)
+yt-dlp
+yt-dlp.exe
+
+# Editor / IDE
+.vscode/
+.idea/
+*.iml
+
+# Build / Cache
+.cache/
+dist/
+build/
+coverage/
+.nyc_output/
+
+# Git
+.git/
+
+# Documentation (optional – keep README.md)
+*.md
+!README.md
+
+# Misc
+.DS_Store?
+Thumbs.db?
+*.orig
+*.rej
