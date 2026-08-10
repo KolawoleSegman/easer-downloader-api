@@ -130,12 +130,20 @@ app.get('/debug', async (req, res) => {
     console.log(`🐞 Debug request for: ${url}`);
 
     const args = [
-        '--print', 'url',
-        '--format', 'bv*+ba/b',
-        '--no-playlist',
-        '--extractor-args', 'youtube:player_client=android,web',
-        url
-    ];
+    url,
+    '-o', outputTemplate,
+    '--format', 'best',                    // Simplest and most compatible
+    '--merge-output-format', 'mp4',
+    '--concurrent-fragments', '4',
+    '--retries', '10',
+    '--fragment-retries', '10',
+    '--no-playlist',
+    '--no-warnings',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    '--add-header', 'Accept-Language:en-US,en;q=0.9',
+    '--socket-timeout', '30',
+    '--extractor-args', 'youtube:player_client=ios,android,web'
+];
 
     if (fs.existsSync(cookiesPath)) {
         args.push('--cookies', cookiesPath);
