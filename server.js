@@ -41,7 +41,7 @@ if (process.env.COOKIES_BASE64) {
 // ============================================
 let ytDlpPath = 'yt-dlp'; // default to system PATH
 
-// Check if a local binary exists (legacy)
+// Optionally check for a local binary (legacy)
 const localPath = path.join(__dirname, 'yt-dlp');
 if (fs.existsSync(localPath)) {
     ytDlpPath = localPath;
@@ -89,7 +89,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 // ============================================
-// RATE LIMITING (12 seconds)
+// RATE LIMITING
 // ============================================
 const requestTimestamps = {};
 app.use((req, res, next) => {
@@ -116,7 +116,7 @@ app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         message: 'Easer Downloader API is running!',
-        version: '2.5.0',
+        version: '2.6.0',
         platform: process.platform,
         cookies_exist: fs.existsSync(cookiesPath),
         yt_dlp: ytDlpPath
@@ -124,7 +124,7 @@ app.get('/', (req, res) => {
 });
 
 // ============================================
-// DEBUG ENDPOINT (prints direct download URL)
+// DEBUG ENDPOINT
 // ============================================
 app.get('/debug', async (req, res) => {
     const url = req.query.url || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
@@ -264,7 +264,6 @@ app.post('/api/download', async (req, res) => {
     } catch (err) {
         console.error('❌ Download failed:', err.message || err);
 
-        // Clean partial files
         try {
             const files = fs.readdirSync(TEMP_DIR).filter(f => f.startsWith(id));
             files.forEach(f => fs.unlinkSync(path.join(TEMP_DIR, f)));
