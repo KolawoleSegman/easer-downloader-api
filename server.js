@@ -88,7 +88,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 // ============================================
-// RATE LIMITING
+// RATE LIMITING (12 seconds)
 // ============================================
 const requestTimestamps = {};
 app.use((req, res, next) => {
@@ -123,7 +123,7 @@ app.get('/', (req, res) => {
 });
 
 // ============================================
-// DEBUG ENDPOINT
+// DEBUG ENDPOINT (prints direct download URL)
 // ============================================
 app.get('/debug', async (req, res) => {
     const url = req.query.url || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
@@ -133,7 +133,7 @@ app.get('/debug', async (req, res) => {
         '--print', 'url',
         '--format', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         '--no-playlist',
-        '--extractor-args', 'youtube:player_client=ios,android,web',
+        '--extractor-args', 'youtube:player_client=web,mweb,android',
         url
     ];
 
@@ -196,7 +196,7 @@ app.post('/api/download', async (req, res) => {
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         '--add-header', 'Accept-Language:en-US,en;q=0.9',
         '--socket-timeout', '30',
-        '--extractor-args', 'youtube:player_client=ios,android,web'
+        '--extractor-args', 'youtube:player_client=web,mweb,android'
     ];
 
     if (fs.existsSync(cookiesPath)) {
