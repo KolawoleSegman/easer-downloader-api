@@ -26,8 +26,6 @@ RUN mkdir -p /app/.cache/yt-dlp
 ENV YTDLP_CACHE_DIR=/app/.cache/yt-dlp
 ENV PORT=10000
 
-# Expose the port
 EXPOSE 10000
 
-# Start the server
 CMD ["node", "server.js"]
