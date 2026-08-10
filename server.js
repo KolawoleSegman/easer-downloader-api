@@ -179,4 +179,124 @@ app.post('/api/download', async (req, res) => {
         });
     }
 
-    console.log(`📥 Starting download for
+    console.log(`📥 Starting download for: ${url}`);
+
+    const id = uuidv4();
+    const outputTemplate = path.join(TEMP_DIR, `${id}.%(ext)s`);
+
+    // Improved arguments (better for YouTube + Facebook)
+    const args = [
+        url,
+        '-o', outputTemplate,
+        '--format', 'best[ext=mp4]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best',
+        '--merge-output-format', 'mp4',
+        '--concurrent-fragments', '4',
+        '--retries', '10',
+        '--fragment-retries', '10',
+        '--no-playlist',
+        '--no-warnings',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--socket-timeout', '30',
+        '--extractor-args', 'youtube:player_client=android,web'
+    ];
+
+    if (fs.existsSync(cookiesPath)) {
+        args.push('--cookies', cookiesPath);
+    }
+
+    try {
+        await new Promise((resolve, reject) => {
+            const child = execFile(ytDlpPath, args, {
+                maxBuffer: 50 * 1024 * 1024,
+                timeout: 5 * 60 * 1000
+            }, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('yt-dlp error:', error.message);
+                    console.error('stderr:', stderr);
+                    return reject({ message: error.message, stderr });
+                }
+                resolve({ stdout, stderr });
+            });
+
+            child.stderr?.on('data', (data) => {
+                const line = data.toString();
+                if (line.includes('%') || line.includes('Downloading')) {
+                    console.log(line.trim());
+                }
+            });
+        });
+
+        // Find downloaded file
+        const files = fs.readdirSync(TEMP_DIR).filter(f => f.startsWith(id));
+        if (files.length === 0) {
+            throw new Error('Download finished but no file was found');
+        }
+
+        const downloadedFile = path.join(TEMP_DIR, files[0]);
+        const stats = fs.statSync(downloadedFile);
+        const fileName = files[0].replace(id + '.', 'video.');
+
+        console.log(`✅ Download complete: ${downloadedFile} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+
+        // Stream the file
+        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', stats.size);
+
+        const stream = fs.createReadStream(downloadedFile);
+        stream.pipe(res);
+
+        stream.on('end', () => {
+            fs.unlink(downloadedFile, (err) => {
+                if (err) console.error('Failed to delete temp file:', err.message);
+                else console.log(`🧹 Deleted temp file: ${fileName}`);
+            });
+        });
+
+        stream.on('error', (err) => {
+            console.error('Stream error:', err);
+            fs.unlink(downloadedFile, () => {});
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Failed to stream file' });
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Download failed:', err.message || err);
+
+        // Clean partial files
+        try {
+            const files = fs.readdirSync(TEMP_DIR).filter(f => f.startsWith(id));
+            files.forEach(f => fs.unlinkSync(path.join(TEMP_DIR, f)));
+        } catch (_) {}
+
+        return res.status(500).json({
+            error: 'Failed to download media',
+            details: err.message || 'Unknown error',
+            stderr: err.stderr || null,
+            suggestion: 'YouTube may be blocking the server. Try again later or use a different video.'
+        });
+    }
+});
+
+// ============================================
+// ERROR HANDLING
+// ============================================
+app.use((err, req, res, next) => {
+    console.error('💥 Server error:', err);
+    res.status(500).json({
+        error: 'Internal server error',
+        message: err.message
+    });
+});
+
+// ============================================
+// START SERVER
+// ============================================
+app.listen(PORT, () => {
+    console.log(`🚀 Easer Downloader API running on port ${PORT}`);
+    console.log(`📌 yt-dlp: ${ytDlpPath}`);
+    console.log(`🍪 Cookies: ${fs.existsSync(cookiesPath) ? 'Yes' : 'No'}`);
+    console.log(`📂 Temp dir: ${TEMP_DIR}`);
+});
