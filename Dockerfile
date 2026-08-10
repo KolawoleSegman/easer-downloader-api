@@ -15,6 +15,9 @@ RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
 # Install yt-dlp with the default extras (includes challenge solver scripts)
 RUN pip3 install --break-system-packages yt-dlp[default]
 
+# Verify yt-dlp is installed and in PATH
+RUN which yt-dlp || (echo "yt-dlp not found in PATH" && exit 1)
+
 # Set working directory
 WORKDIR /app
 
