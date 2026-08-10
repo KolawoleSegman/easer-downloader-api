@@ -88,7 +88,7 @@ setInterval(() => {
 }, 30 * 60 * 1000);
 
 // ============================================
-// RATE LIMITING (12 seconds)
+// RATE LIMITING
 // ============================================
 const requestTimestamps = {};
 app.use((req, res, next) => {
@@ -115,7 +115,7 @@ app.get('/', (req, res) => {
     res.json({
         status: 'OK',
         message: 'Easer Downloader API is running!',
-        version: '2.2.0',
+        version: '2.3.0',
         platform: process.platform,
         cookies_exist: fs.existsSync(cookiesPath),
         yt_dlp: ytDlpPath
@@ -130,20 +130,12 @@ app.get('/debug', async (req, res) => {
     console.log(`🐞 Debug request for: ${url}`);
 
     const args = [
-    url,
-    '-o', outputTemplate,
-    '--format', 'best',                    // Simplest and most compatible
-    '--merge-output-format', 'mp4',
-    '--concurrent-fragments', '4',
-    '--retries', '10',
-    '--fragment-retries', '10',
-    '--no-playlist',
-    '--no-warnings',
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    '--add-header', 'Accept-Language:en-US,en;q=0.9',
-    '--socket-timeout', '30',
-    '--extractor-args', 'youtube:player_client=ios,android,web'
-];
+        '--print', 'url',
+        '--format', 'best',
+        '--no-playlist',
+        '--extractor-args', 'youtube:player_client=ios,android,web',
+        url
+    ];
 
     if (fs.existsSync(cookiesPath)) {
         args.push('--cookies', cookiesPath);
@@ -192,11 +184,10 @@ app.post('/api/download', async (req, res) => {
     const id = uuidv4();
     const outputTemplate = path.join(TEMP_DIR, `${id}.%(ext)s`);
 
-    // More flexible format (fixes "Requested format is not available")
     const args = [
         url,
         '-o', outputTemplate,
-        '--format', 'bv*+ba/b',
+        '--format', 'best',
         '--merge-output-format', 'mp4',
         '--concurrent-fragments', '4',
         '--retries', '10',
@@ -206,7 +197,7 @@ app.post('/api/download', async (req, res) => {
         '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         '--add-header', 'Accept-Language:en-US,en;q=0.9',
         '--socket-timeout', '30',
-        '--extractor-args', 'youtube:player_client=android,web'
+        '--extractor-args', 'youtube:player_client=ios,android,web'
     ];
 
     if (fs.existsSync(cookiesPath)) {
@@ -273,7 +264,6 @@ app.post('/api/download', async (req, res) => {
     } catch (err) {
         console.error('❌ Download failed:', err.message || err);
 
-        // Clean partial files
         try {
             const files = fs.readdirSync(TEMP_DIR).filter(f => f.startsWith(id));
             files.forEach(f => fs.unlinkSync(path.join(TEMP_DIR, f)));
