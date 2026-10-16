@@ -4,3 +4,15 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: COOKIES_BASE64
+        sync: false
+      - key: API_KEY            # strongly recommended on a public URL
+        sync: false
+      - key: PROXY
+        sync: false
+      - key: MAX_CONCURRENT
+        value: "2"
+      - key: MAX_FILESIZE
+        value: 500M

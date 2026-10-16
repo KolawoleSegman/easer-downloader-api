@@ -1,42 +1,30 @@
-# Use a Debian-based Node image
-FROM node:18-slim
+FROM node:20-slim
 
-# Install system dependencies: ffmpeg, curl, and python3 (for optional extras)
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    curl \
-    python3 \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ffmpeg curl ca-certificates python3 unzip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Deno (required by yt-dlp for JavaScript challenges)
-RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
+# JS runtime that yt-dlp uses for YouTube signature solving
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
+    && ln -sf /usr/local/bin/deno /usr/bin/deno || true
 
-# Download yt-dlp binary and place it in /usr/local/bin
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
-    && chmod a+rx /usr/local/bin/yt-dlp
+# yt-dlp is owned by the unprivileged user so `yt-dlp -U` (auto-update) works
+RUN useradd -m -u 10001 app \
+    && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp && chown app:app /usr/local/bin/yt-dlp \
+    && yt-dlp --version
 
-# Verify installation
-RUN yt-dlp --version
-
-# Set working directory
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY --chown=app:app . .
+RUN mkdir -p /tmp/easer-downloads && chown -R app:app /app /tmp/easer-downloads
 
-# Copy package files and install Node dependencies
-COPY package*.json ./
-RUN npm install
+USER app
+ENV PORT=10000 NODE_ENV=production
 
-# Copy the rest of the application
-COPY . .
-
-# Create cache directory for yt-dlp
-RUN mkdir -p /app/.cache/yt-dlp
-
-# Environment variables
-ENV YTDLP_CACHE_DIR=/app/.cache/yt-dlp
-ENV PORT=10000
-
-# Expose port
 EXPOSE 10000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD curl -fsS http://localhost:${PORT}/health || exit 1
 
-# Start the server
 CMD ["node", "server.js"]

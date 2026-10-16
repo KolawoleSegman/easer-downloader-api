@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Easer Downloader</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Easer Downloader</h1>
+      <p class="sub">Universal media downloader · <span id="ver">v4</span> · <span id="health" class="dot" title="server status"></span></p>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="download" role="tab">Download</button>
+      <button class="tab" data-tab="search" role="tab">Search</button>
+      <button class="tab" data-tab="queue" role="tab">Queue <span id="qcount" class="badge" hidden>0</span></button>
+      <button class="tab" data-tab="settings" role="tab">Settings</button>
+    </nav>
+
+    <section class="card" id="panel-download">
+      <label for="url">Media URL <small>(paste several, one per line, to queue a batch)</small></label>
+      <textarea id="url" rows="2" placeholder="https://www.youtube.com/watch?v=… / TikTok / Instagram / SoundCloud …" spellcheck="false"></textarea>
+
+      <div class="row">
+        <div><label for="format">Format</label>
+          <select id="format">
+            <option value="video">Video · mp4</option>
+            <option value="webm">Video · webm</option>
+            <option value="mkv">Video · mkv</option>
+            <option value="mp3">Audio · mp3</option>
+            <option value="m4a">Audio · m4a</option>
+            <option value="opus">Audio · opus</option>
+            <option value="flac">Audio · flac</option>
+            <option value="wav">Audio · wav</option>
+          </select></div>
+        <div><label for="quality">Quality</label>
+          <select id="quality">
+            <option value="">Best</option>
+            <option value="2160">≤ 4K</option>
+            <option value="1440">≤ 1440p</option>
+            <option value="1080">≤ 1080p</option>
+            <option value="720">≤ 720p</option>
+            <option value="480">≤ 480p</option>
+            <option value="360">≤ 360p</option>
+            <option value="worst">Smallest</option>
+          </select></div>
+      </div>
+
+      <details>
+        <summary>More options</summary>
+        <div class="row">
+          <div><label for="start">Clip start</label><input id="start" placeholder="0:30 or 30" /></div>
+          <div><label for="end">Clip end</label><input id="end" placeholder="1:45 or 105" /></div>
+        </div>
+        <div class="row">
+          <div><label for="subLang">Subtitle languages</label><input id="subLang" value="en.*,en" /></div>
+          <div><label for="plLimit">Playlist items</label><input id="plLimit" type="number" min="1" max="50" value="5" /></div>
+        </div>
+        <div class="checks">
+          <label class="chk"><input type="checkbox" id="subs" /> Subtitles</label>
+          <label class="chk"><input type="checkbox" id="playlist" /> Playlist</label>
+          <label class="chk"><input type="checkbox" id="thumbEmbed" /> Embed cover art</label>
+          <label class="chk"><input type="checkbox" id="sponsor" /> Skip sponsors (SponsorBlock)</label>
+        </div>
+        <label for="formatId">Custom format <small>(optional yt-dlp selector or a format picked below)</small></label>
+        <input id="formatId" placeholder="e.g. 137+140" spellcheck="false" />
+      </details>
+
+      <div class="btns">
+        <button class="btn-sec" id="btnInfo">Get info</button>
+        <button class="btn-sec" id="btnExtract">Direct links</button>
+        <button class="btn-sec" id="btnThumb">Thumbnail</button>
+        <button class="btn-sec" id="btnSubs">Subtitles</button>
+        <button class="btn-primary" id="btnDl">Download</button>
+        <button class="btn-purple" id="btnJob">Add to queue</button>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div id="status" role="status"></div>
+
+      <div class="preview" id="preview" hidden>
+        <img id="pThumb" alt="" />
+        <h3 id="pTitle"></h3>
+        <div class="meta" id="pMeta"></div>
+        <div id="pQualities" class="chips"></div>
+        <details id="fmtWrap" hidden><summary>All formats</summary><div id="fmtList" class="fmtlist"></div></details>
+      </div>
+      <div id="links" class="links" hidden></div>
+    </section>
+
+    <section class="card" id="panel-search" hidden>
+      <label for="query">Search</label>
+      <div class="row">
+        <input id="query" type="search" placeholder="song name, channel, topic…" />
+        <select id="source" style="max-width:9rem"><option value="youtube">YouTube</option><option value="soundcloud">SoundCloud</option></select>
+      </div>
+      <div class="btns"><button class="btn-primary" id="btnSearch">Search</button></div>
+      <div id="searchResults"></div>
+    </section>
+
+    <section class="card" id="panel-queue" hidden>
+      <div class="btns"><button class="btn-sec" id="btnClear">Clear finished</button></div>
+      <div id="jobList"><p class="muted">No downloads yet.</p></div>
+    </section>
+
+    <section class="card" id="panel-settings" hidden>
+      <label for="apiKey">API key <small>(only needed if the server sets API_KEY; stored in this tab only)</small></label>
+      <input id="apiKey" type="password" autocomplete="off" />
+      <div class="btns"><button class="btn-primary" id="btnSaveKey">Save</button></div>
+      <h3>Server</h3>
+      <pre id="serverInfo" class="muted">Loading…</pre>
+    </section>
+
+    <footer>
+      <a href="/api">API index</a> · <a href="/health">/health</a> · Only download content you have the right to save.
+    </footer>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
