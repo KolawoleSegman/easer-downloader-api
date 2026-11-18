@@ -47,7 +47,10 @@ async function saveBlob(res, fallback) {
 // ---------- tabs ----------
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  for (const p of ['download', 'search', 'queue', 'settings']) $('panel-' + p).hidden = p !== name;
+  for (const p of ['download', 'convert', 'search', 'queue', 'settings']) {
+    const panel = $('panel-' + p);
+    if (panel) panel.hidden = p !== name;
+  }
   if (name === 'queue') refreshJobs();
   if (name === 'settings') loadServerInfo();
 }
@@ -215,3 +218,71 @@ async function loadServerInfo() {
 })();
 // Paste-friendly: clean ?si= style tracking noise is left to yt-dlp; just autosize the box
 $('url').addEventListener('input', e => { e.target.rows = Math.min(6, Math.max(2, e.target.value.split('\n').length)); });
+
+// ---------- convert ----------
+const convStatus = $('convStatus');
+const setConvStatus = (m, type = '') => { convStatus.textContent = m || ''; convStatus.className = type; };
+const convProgressWrap = $('convProgressWrap');
+const convProgressBar = $('convProgressBar');
+
+function syncConvMode() {
+  const mode = document.querySelector('input[name="convMode"]:checked')?.value || 'v2a';
+  $('conv-v2a').hidden = mode !== 'v2a';
+  $('conv-a2v').hidden = mode !== 'a2v';
+}
+document.querySelectorAll('input[name="convMode"]').forEach(r => r.addEventListener('change', syncConvMode));
+syncConvMode();
+
+$('btnConvert').onclick = async () => {
+  const mode = document.querySelector('input[name="convMode"]:checked')?.value || 'v2a';
+  const btn = $('btnConvert');
+  btn.disabled = true;
+  setConvStatus('Uploading & converting… this can take a minute');
+  convProgressWrap.classList.add('show');
+  convProgressBar.style.width = '30%';
+
+  const fd = new FormData();
+  let endpoint, fallbackName;
+
+  try {
+    if (mode === 'v2a') {
+      const file = $('convVideo').files?.[0];
+      if (!file) { setConvStatus('Choose a video file', 'err'); return; }
+      fd.append('video', file);
+      fd.append('format', $('convAudioFmt').value);
+      endpoint = '/api/convert/video-to-audio';
+      fallbackName = (file.name.replace(/\.[^.]+$/, '') || 'audio') + '.' + $('convAudioFmt').value;
+    } else {
+      const audio = $('convAudio').files?.[0];
+      const image = $('convImage').files?.[0];
+      if (!audio) { setConvStatus('Choose an audio file', 'err'); return; }
+      if (!image) { setConvStatus('Choose a cover image', 'err'); return; }
+      fd.append('audio', audio);
+      fd.append('image', image);
+      fd.append('format', $('convVideoFmt').value);
+      fd.append('resolution', $('convRes').value);
+      endpoint = '/api/convert/audio-to-video';
+      fallbackName = (audio.name.replace(/\.[^.]+$/, '') || 'video') + '.' + $('convVideoFmt').value;
+    }
+
+    const headers = {};
+    if (apiKey) headers['X-API-Key'] = apiKey;
+
+    convProgressBar.style.width = '55%';
+    const res = await fetch(endpoint, { method: 'POST', headers, body: fd });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      if (res.status === 401) { switchTab('settings'); throw new Error('API key required — enter it in Settings.'); }
+      throw new Error(e.suggestion || e.details || e.error || e.message || res.statusText);
+    }
+    convProgressBar.style.width = '90%';
+    await saveBlob(res, fallbackName);
+    convProgressBar.style.width = '100%';
+    setConvStatus('Done — file downloaded', 'ok');
+  } catch (e) {
+    setConvStatus(e.message || 'Conversion failed', 'err');
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => convProgressWrap.classList.remove('show'), 1500);
+  }
+};

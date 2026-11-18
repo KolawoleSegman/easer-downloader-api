@@ -1,7 +1,12 @@
-# Easer Downloader API v4.0.1
+# Easer Downloader API v4.1.0
 
-Media downloader API and web UI powered by **yt-dlp** (YouTube, TikTok, Instagram, X, Vimeo, SoundCloud and 1000+ other sites).
+Media downloader **and local converter** API + web UI powered by **yt-dlp** & **ffmpeg** (YouTube, TikTok, Instagram, X, Vimeo, SoundCloud and 1000+ other sites).
 Only download content you own or have permission to save, and respect each site's terms.
+
+### New in v4.1 — Convert tab
+- **Video → Audio**: upload a local video and extract mp3 / m4a / opus / flac / wav.
+- **Audio → Video**: upload audio + a cover image → static-image video (mp4 or webm) at 720p / 1080p / original size.
+- Max upload size 200 MB. Uses the same rate limits as downloads.
 
 ## What's new in v4
 

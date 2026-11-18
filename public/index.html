@@ -16,6 +16,7 @@
 
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="download" role="tab">Download</button>
+      <button class="tab" data-tab="convert" role="tab">Convert</button>
       <button class="tab" data-tab="search" role="tab">Search</button>
       <button class="tab" data-tab="queue" role="tab">Queue <span id="qcount" class="badge" hidden>0</span></button>
       <button class="tab" data-tab="settings" role="tab">Settings</button>
@@ -90,6 +91,60 @@
         <details id="fmtWrap" hidden><summary>All formats</summary><div id="fmtList" class="fmtlist"></div></details>
       </div>
       <div id="links" class="links" hidden></div>
+    </section>
+
+    <section class="card" id="panel-convert" hidden>
+      <div class="row" style="margin-bottom:.6rem">
+        <label class="chk"><input type="radio" name="convMode" value="v2a" checked /> Video → Audio</label>
+        <label class="chk"><input type="radio" name="convMode" value="a2v" /> Audio → Video</label>
+      </div>
+
+      <div id="conv-v2a">
+        <label for="convVideo">Video file</label>
+        <input id="convVideo" type="file" accept="video/*,.mp4,.webm,.mkv,.mov,.avi,.m4v" />
+        <div class="row">
+          <div>
+            <label for="convAudioFmt">Output audio format</label>
+            <select id="convAudioFmt">
+              <option value="mp3">MP3</option>
+              <option value="m4a">M4A (AAC)</option>
+              <option value="opus">Opus</option>
+              <option value="flac">FLAC</option>
+              <option value="wav">WAV</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="conv-a2v" hidden>
+        <label for="convAudio">Audio file</label>
+        <input id="convAudio" type="file" accept="audio/*,.mp3,.m4a,.aac,.opus,.ogg,.flac,.wav" />
+        <label for="convImage">Cover image (background)</label>
+        <input id="convImage" type="file" accept="image/*,.jpg,.jpeg,.png,.webp" />
+        <div class="row">
+          <div>
+            <label for="convVideoFmt">Output video format</label>
+            <select id="convVideoFmt">
+              <option value="mp4">MP4</option>
+              <option value="webm">WebM</option>
+            </select>
+          </div>
+          <div>
+            <label for="convRes">Resolution</label>
+            <select id="convRes">
+              <option value="720p">720p (1280×720)</option>
+              <option value="1080p">1080p (1920×1080)</option>
+              <option value="original">Original image size</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button class="btn-primary" id="btnConvert">Convert & download</button>
+      </div>
+      <div class="progress-wrap" id="convProgressWrap"><div class="progress-bar" id="convProgressBar"></div></div>
+      <div id="convStatus" role="status"></div>
     </section>
 
     <section class="card" id="panel-search" hidden>

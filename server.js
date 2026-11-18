@@ -8,8 +8,10 @@ const crypto = require('crypto');
 const cfg = require('./lib/config');
 const yt = require('./lib/ytdlp');
 const dl = require('./lib/downloader');
+const convert = require('./lib/convert');
 const { createLimiter } = require('./lib/ratelimit');
 const { validateUrl, parseOptions, buildFormatArgs } = require('./lib/validate');
+const multer = require('multer');
 
 const app = express();
 if (cfg.TRUST_PROXY) app.set('trust proxy', 1);
@@ -90,6 +92,8 @@ function apiIndex() {
       'DELETE /api/job/:id': 'Cancel and/or delete a job',
       'GET  /api/jobs': 'Recent jobs',
       'POST /api/admin/update': 'Update yt-dlp (requires API_KEY to be configured)',
+      'POST /api/convert/video-to-audio': 'multipart: file (video) + format=mp3|m4a|opus|flac|wav → audio file',
+      'POST /api/convert/audio-to-video': 'multipart: audio + image + format=mp4|webm + resolution=720p|1080p|original → video',
     },
   };
 }
@@ -347,6 +351,109 @@ app.post('/api/subtitles', wrap(async (req, res, next) => {
     : { zip: true, files, filename: 'subtitles.zip', size: require('./lib/zip').zipSize(files.map(f => ({ path: f.path, name: f.name }))) };
   res.setHeader('X-Subtitle-Files', files.map(f => f.name).join(','));
   dl.sendResult(res, result, next);
+}));
+
+// ---------- convert (local file upload) ----------
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      if (!req._uploadDir) {
+        const { dir } = convert.makeWorkDir();
+        req._uploadDir = dir;
+      }
+      cb(null, req._uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const ext = convert.extOf(file.originalname) || 'bin';
+      cb(null, `${file.fieldname}-${Date.now()}.${ext}`);
+    },
+  }),
+  limits: { fileSize: convert.MAX_CONVERT_BYTES, files: 3 },
+  fileFilter: (req, file, cb) => {
+    const ext = convert.extOf(file.originalname);
+    const field = file.fieldname;
+    if (field === 'video' && convert.ALLOWED_VIDEO.has(ext)) return cb(null, true);
+    if (field === 'audio' && convert.ALLOWED_AUDIO.has(ext)) return cb(null, true);
+    if (field === 'image' && convert.ALLOWED_IMAGE.has(ext)) return cb(null, true);
+    cb(Object.assign(new Error(`Unsupported ${field} type (.${ext || '?'}).`), { status: 400, code: 'BAD_FILE_TYPE' }));
+  },
+});
+
+function cleanupUpload(req) {
+  if (req._uploadDir) convert.rmDir(req._uploadDir);
+  if (req.file?.path) try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+  if (req.files) {
+    for (const f of Object.values(req.files).flat()) {
+      try { if (f.path) fs.unlinkSync(f.path); } catch { /* ignore */ }
+    }
+  }
+}
+
+function sendConvertResult(res, result, next) {
+  res.setHeader('Content-Type', result.mime);
+  res.setHeader('Content-Length', result.size);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`);
+  res.setHeader('X-Convert-Size', String(result.size));
+  const stream = fs.createReadStream(result.path);
+  stream.on('error', next);
+  stream.on('close', () => convert.rmDir(result.dir));
+  stream.pipe(res);
+}
+
+app.post('/api/convert/video-to-audio', heavyLimit, (req, res, next) => {
+  upload.single('video')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return next(Object.assign(new Error('File too large (max 200 MB)'), { status: 413, code: 'FILE_TOO_LARGE' }));
+      return next(err);
+    }
+    next();
+  });
+}, wrap(async (req, res, next) => {
+  if (!req.file) throw Object.assign(new Error('Missing video file. Use form field "video".'), { status: 400, code: 'NO_FILE' });
+  const format = String(req.body?.format || req.query?.format || 'mp3').toLowerCase();
+  let result;
+  try {
+    result = await convert.videoToAudio(req.file.path, format, {
+      start: req.body?.start || req.query?.start,
+      end: req.body?.end || req.query?.end,
+    });
+  } finally {
+    // remove the original upload; result.dir is different
+    try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+    if (req._uploadDir) convert.rmDir(req._uploadDir);
+  }
+  sendConvertResult(res, result, next);
+}));
+
+app.post('/api/convert/audio-to-video', heavyLimit, (req, res, next) => {
+  upload.fields([
+    { name: 'audio', maxCount: 1 },
+    { name: 'image', maxCount: 1 },
+  ])(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return next(Object.assign(new Error('File too large (max 200 MB)'), { status: 413, code: 'FILE_TOO_LARGE' }));
+      return next(err);
+    }
+    next();
+  });
+}, wrap(async (req, res, next) => {
+  const audio = req.files?.audio?.[0];
+  const image = req.files?.image?.[0];
+  if (!audio) throw Object.assign(new Error('Missing audio file. Use form field "audio".'), { status: 400, code: 'NO_FILE' });
+  if (!image) throw Object.assign(new Error('Missing image file. Use form field "image" (jpg/png/webp).'), { status: 400, code: 'NO_IMAGE' });
+
+  const format = String(req.body?.format || req.query?.format || 'mp4').toLowerCase();
+  const resolution = String(req.body?.resolution || req.query?.resolution || '720p').toLowerCase();
+
+  let result;
+  try {
+    result = await convert.audioToVideo(audio.path, image.path, { format, resolution });
+  } finally {
+    try { fs.unlinkSync(audio.path); } catch { /* ignore */ }
+    try { fs.unlinkSync(image.path); } catch { /* ignore */ }
+    if (req._uploadDir) convert.rmDir(req._uploadDir);
+  }
+  sendConvertResult(res, result, next);
 }));
 
 // ---------- search ----------

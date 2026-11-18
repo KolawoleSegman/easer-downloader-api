@@ -1,7 +1,7 @@
 {
   "name": "easer-downloader-api",
-  "version": "4.0.1",
-  "description": "Universal media downloader API powered by yt-dlp: info, extract, download (zip for playlists), clips, subtitles, thumbnails, search, async jobs with SSE progress",
+  "version": "4.1.0",
+  "description": "Universal media downloader + converter API powered by yt-dlp & ffmpeg: download from 1000+ sites, convert video↔audio locally, clips, subtitles, jobs with SSE",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
   },
   "keywords": [
     "yt-dlp",
